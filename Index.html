@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AI仮想トレーダー v3 - 1年バックテスト</title>
+<style>
+:root{
+  --bg:#0a0f1d;--card:#141b2f;--line:#26314e;--text:#f7f8fb;--muted:#9aa6bf;
+  --accent:#72a7ff;--green:#2ed48a;--red:#ff6b74;--amber:#f3c969;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#090e1a,#11182b);color:var(--text);
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:900px;margin:auto;padding:16px 14px 50px}
+h1{font-size:27px;margin:5px 0}.sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.5}
+.card{background:rgba(20,27,47,.96);border:1px solid var(--line);border-radius:18px;padding:15px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpi{font-size:11px;color:var(--muted)}.big{font-size:26px;font-weight:850;margin-top:4px}
+.pos{color:var(--green)}.neg{color:var(--red)}.amber{color:var(--amber)}
+button,input,select{border-radius:12px;border:1px solid var(--line);background:#0c1325;color:var(--text);padding:11px;font-size:15px;width:100%}
+button{cursor:pointer;font-weight:800}.primary{background:var(--accent);color:#08101e;border:none}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.note{font-size:11px;color:var(--muted);line-height:1.55}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:8px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+.chartwrap{width:100%;overflow:hidden}
+canvas{width:100%;height:260px;background:#0d1425;border-radius:14px}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:11px;color:var(--muted)}
+.status{font-size:12px;color:var(--muted)}
+@media(max-width:680px){.grid4{grid-template-columns:repeat(2,1fr)}.big{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI仮想トレーダー <span class="badge">v3 BACKTEST</span></h1>
+  <div class="sub">過去1年のBTC・ETH・SOL日足データで、AI戦略を仮想100万円から検証します。実資金は一切動きません。</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="kpi">初期資金</div>
+        <input id="initialCash" type="number" value="1000000" step="10000">
+      </div>
+      <div>
+        <div class="kpi">1回の売買額</div>
+        <input id="tradeAmount" type="number" value="100000" step="10000">
+      </div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="row">
+      <div>
+        <div class="kpi">買いスコア</div>
+        <input id="buyScore" type="number" value="70" min="50" max="100">
+      </div>
+      <div>
+        <div class="kpi">売りスコア</div>
+        <input id="sellScore" type="number" value="30" min="0" max="50">
+      </div>
+    </div>
+    <div style="height:10px"></div>
+    <button class="primary" onclick="runBacktest()">過去1年をバックテスト</button>
+    <div id="status" class="status" style="margin-top:8px">未実行</div>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><div class="kpi">AI最終資産</div><div class="big" id="finalEq">--</div></div>
+    <div class="card"><div class="kpi">AIリターン</div><div class="big" id="ret">--</div></div>
+    <div class="card"><div class="kpi">最大ドローダウン</div><div class="big" id="mdd">--</div></div>
+    <div class="card"><div class="kpi">勝率</div><div class="big" id="wr">--</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="kpi">売買回数</div><div class="big" id="trades">--</div></div>
+    <div class="card"><div class="kpi">BUY & HOLD比較</div><div class="big" id="hold">--</div></div>
+  </div>
+
+  <div class="card">
+    <strong>資産推移</strong>
+    <div class="chartwrap" style="margin-top:10px"><canvas id="chart" width="860" height="260"></canvas></div>
+    <p class="note">AI戦略の資産推移と、BTC/ETH/SOLへ初日に均等投資して1年間放置した場合を比較します。</p>
+  </div>
+
+  <div class="card">
+    <strong>銘柄別結果</strong>
+    <div style="overflow:auto;margin-top:8px">
+      <table>
+        <thead><tr><th>銘柄</th><th>初値</th><th>終値</th><th>騰落率</th><th>買い回数</th><th>売り回数</th><th>確定損益</th></tr></thead>
+        <tbody id="symbolRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>直近の売買履歴</strong>
+    <div style="overflow:auto;margin-top:8px">
+      <table>
+        <thead><tr><th>日付</th><th>銘柄</th><th>売買</th><th>価格(USD)</th><th>スコア</th><th>損益(円)</th></tr></thead>
+        <tbody id="history"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="note">
+      注意：このバックテストは日足ベースの簡易検証です。手数料・スリッページ・税金・約定拒否などは含めていません。
+      過去の成績は将来の利益を保証しません。API制限や地域制限でデータ取得できない場合があります。
+    </p>
+  </div>
+</div>
+
+<script>
+const PAIRS={BTC:'BTCUSDT',ETH:'ETHUSDT',SOL:'SOLUSDT'};
+const FX=155;
+
+function ema(arr,period){
+  if(!arr.length)return 0;
+  const k=2/(period+1); let v=arr[0];
+  for(let i=1;i<arr.length;i++)v=arr[i]*k+v*(1-k);
+  return v;
+}
+function rsi(arr,period=14){
+  if(arr.length<period+1)return 50;
+  let g=0,l=0;
+  for(let i=arr.length-period;i<arr.length;i++){
+    const d=arr[i]-arr[i-1]; if(d>0)g+=d; else l-=d;
+  }
+  if(l===0)return 100;
+  const rs=(g/period)/(l/period);
+  return 100-(100/(1+rs));
+}
+function scoreMarket(closes){
+  const p=closes.at(-1),e20=ema(closes.slice(-80),20),e50=ema(closes.slice(-120),50);
+  const rv=rsi(closes),mac=ema(closes.slice(-60),12)-ema(closes.slice(-60),26);
+  const mom=closes.length>5?(p/closes.at(-6)-1):0;
+  let score=50;
+  score+=p>e20?10:-10;
+  score+=e20>e50?10:-10;
+  score+=mac>0?10:-10;
+  if(rv<30)score+=15; else if(rv>70)score-=15;
+  else if(rv>=50&&rv<=65)score+=5; else if(rv<45)score-=5;
+  score+=Math.max(-10,Math.min(10,mom*400));
+  return Math.max(0,Math.min(100,score));
+}
+async function fetchDaily(pair){
+  const url=`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=365`;
+  const r=await fetch(url,{cache:'no-store'});
+  if(!r.ok)throw new Error(pair+' data error');
+  const d=await r.json();
+  return d.map(x=>({t:Number(x[0]),close:Number(x[4])}));
+}
+function yen(n){return '¥'+Math.round(n).toLocaleString('ja-JP');}
+function pct(n){return (n>=0?'+':'')+n.toFixed(2)+'%';}
+
+async function runBacktest(){
+  const status=document.getElementById('status');
+  status.textContent='市場データ取得中...';
+  try{
+    const data={};
+    for(const s of Object.keys(PAIRS)){
+      data[s]=await fetchDaily(PAIRS[s]);
+    }
+    status.textContent='バックテスト計算中...';
+
+    const initial=Number(document.getElementById('initialCash').value)||1000000;
+    const tradeAmount=Number(document.getElementById('tradeAmount').value)||100000;
+    const buyTh=Number(document.getElementById('buyScore').value)||70;
+    const sellTh=Number(document.getElementById('sellScore').value)||30;
+
+    let cash=initial;
+    let pos={BTC:{qty:0,avg:0},ETH:{qty:0,avg:0},SOL:{qty:0,avg:0}};
+    let stat={
+      BTC:{buys:0,sells:0,realized:0},
+      ETH:{buys:0,sells:0,realized:0},
+      SOL:{buys:0,sells:0,realized:0}
+    };
+    let wins=0,losses=0,trades=[],curve=[],peak=initial,maxDD=0;
+
+    const days=Math.min(...Object.values(data).map(a=>a.length));
+    for(let i=55;i<days;i++){
+      for(const s of Object.keys(PAIRS)){
+        const closes=data[s].slice(0,i+1).map(x=>x.close);
+        const price=closes.at(-1);
+        const score=scoreMarket(closes);
+        const priceJPY=price*FX;
+        const p=pos[s];
+
+        if(score>=buyTh){
+          const currentVal=p.qty*priceJPY;
+          const equityNow=cash+Object.keys(pos).reduce((sum,k)=>{
+            const pk=data[k][i].close*FX;
+            return sum+pos[k].qty*pk;
+          },0);
+          const maxPer=equityNow*0.35;
+          const room=Math.max(0,maxPer-currentVal);
+          const amt=Math.min(tradeAmount,cash,room);
+          if(amt>=1000){
+            const q=amt/priceJPY;
+            const oldCost=p.qty*p.avg;
+            p.qty+=q;
+            p.avg=(oldCost+amt)/p.qty;
+            cash-=amt;
+            stat[s].buys++;
+            trades.push({t:data[s][i].t,s,side:'買',price,score,profit:0});
+          }
+        }else if(score<=sellTh && p.qty>0){
+          const q=Math.min(p.qty,tradeAmount/priceJPY);
+          if(q>0){
+            const proceeds=q*priceJPY;
+            const cost=q*p.avg;
+            const profit=proceeds-cost;
+            cash+=proceeds;
+            p.qty-=q;
+            if(p.qty<1e-12){p.qty=0;p.avg=0;}
+            stat[s].sells++;
+            stat[s].realized+=profit;
+            if(profit>=0)wins++; else losses++;
+            trades.push({t:data[s][i].t,s,side:'売',price,score,profit});
+          }
+        }
+      }
+
+      const eq=cash+Object.keys(pos).reduce((sum,s)=>{
+        return sum+pos[s].qty*(data[s][i].close*FX);
+      },0);
+      curve.push(eq);
+      if(eq>peak)peak=eq;
+      const dd=(peak-eq)/peak*100;
+      if(dd>maxDD)maxDD=dd;
+    }
+
+    const finalEq=curve.at(-1)||initial;
+    const ret=(finalEq/initial-1)*100;
+    const totalClosed=wins+losses;
+    const wr=totalClosed?wins/totalClosed*100:0;
+
+    // Buy & Hold equal split
+    const split=initial/3;
+    let holdFinal=0;
+    for(const s of Object.keys(PAIRS)){
+      const first=data[s][55].close*FX;
+      const last=data[s][days-1].close*FX;
+      holdFinal += (split/first)*last;
+    }
+    const holdRet=(holdFinal/initial-1)*100;
+
+    document.getElementById('finalEq').textContent=yen(finalEq);
+    const retEl=document.getElementById('ret'); retEl.textContent=pct(ret); retEl.className='big '+(ret>=0?'pos':'neg');
+    const mddEl=document.getElementById('mdd'); mddEl.textContent='-'+maxDD.toFixed(2)+'%'; mddEl.className='big '+(maxDD<20?'pos':'neg');
+    document.getElementById('wr').textContent=wr.toFixed(1)+'%';
+    document.getElementById('trades').textContent=trades.length+' 回';
+    const holdEl=document.getElementById('hold'); holdEl.textContent=pct(holdRet); holdEl.className='big '+(holdRet>=0?'pos':'neg');
+
+    document.getElementById('symbolRows').innerHTML=Object.keys(PAIRS).map(s=>{
+      const first=data[s][55].close, last=data[s][days-1].close;
+      const move=(last/first-1)*100;
+      return `<tr><td>${s}</td><td>$${first.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>$${last.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td class="${move>=0?'pos':'neg'}">${pct(move)}</td><td>${stat[s].buys}</td><td>${stat[s].sells}</td><td class="${stat[s].realized>=0?'pos':'neg'}">${yen(stat[s].realized)}</td></tr>`;
+    }).join('');
+
+    document.getElementById('history').innerHTML=trades.slice(-30).reverse().map(x=>{
+      const d=new Date(x.t).toLocaleDateString('ja-JP');
+      return `<tr><td>${d}</td><td>${x.s}</td><td class="${x.side==='買'?'pos':'neg'}">${x.side}</td><td>$${x.price.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${x.score.toFixed(0)}</td><td class="${x.profit>=0?'pos':'neg'}">${x.side==='売'?yen(x.profit):'-'}</td></tr>`;
+    }).join('');
+
+    drawChart(curve, buildHoldCurve(data,days,initial), initial);
+    status.textContent='完了：過去1年の日足データで検証しました。';
+  }catch(e){
+    status.textContent='失敗：データ取得できませんでした。通信環境やAPI制限の可能性があります。';
+  }
+}
+
+function buildHoldCurve(data,days,initial){
+  const split=initial/3;
+  const q={};
+  for(const s of Object.keys(PAIRS))q[s]=split/(data[s][55].close*FX);
+  const arr=[];
+  for(let i=55;i<days;i++){
+    let v=0;
+    for(const s of Object.keys(PAIRS))v+=q[s]*(data[s][i].close*FX);
+    arr.push(v);
+  }
+  return arr;
+}
+
+function drawChart(ai,hold,initial){
+  const c=document.getElementById('chart'),ctx=c.getContext('2d');
+  const W=c.width,H=c.height;
+  ctx.clearRect(0,0,W,H);
+  const all=[...ai,...hold,initial];
+  const min=Math.min(...all),max=Math.max(...all);
+  const pad=28;
+  const x=i=>pad+(W-2*pad)*(i/(Math.max(1,ai.length-1)));
+  const y=v=>H-pad-(H-2*pad)*((v-min)/(Math.max(1,max-min)));
+
+  ctx.strokeStyle='#25314e'; ctx.lineWidth=1;
+  for(let j=0;j<4;j++){
+    const yy=pad+(H-2*pad)*(j/3);
+    ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(W-pad,yy);ctx.stroke();
+  }
+
+  ctx.lineWidth=2;
+  ctx.strokeStyle='#72a7ff';ctx.beginPath();
+  ai.forEach((v,i)=>{const xx=x(i),yy=y(v); if(i===0)ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);});
+  ctx.stroke();
+
+  ctx.strokeStyle='#f3c969';ctx.beginPath();
+  hold.forEach((v,i)=>{const xx=x(i),yy=y(v); if(i===0)ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);});
+  ctx.stroke();
+
+  ctx.fillStyle='#f7f8fb';ctx.font='12px -apple-system';
+  ctx.fillText('AI',pad+8,pad+5);
+  ctx.fillStyle='#72a7ff';ctx.fillRect(pad,pad-5,5,5);
+  ctx.fillStyle='#f7f8fb';ctx.fillText('BUY & HOLD',pad+50,pad+5);
+  ctx.fillStyle='#f3c969';ctx.fillRect(pad+42,pad-5,5,5);
+}
+</script>
+</body>
+</html>
